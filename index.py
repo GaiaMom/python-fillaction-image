@@ -74,7 +74,7 @@ class ImageApp:
         _, binary = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
         
         # Find contours which represent different islands
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(uv_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         # Create an empty image to draw contours
         output_img = np.zeros_like(uv_img)
@@ -88,11 +88,57 @@ class ImageApp:
             cv2.drawContours(output_img, [contour], -1, color, thickness=cv2.FILLED)
         return output_img
 
+    def fill_contours(self, uv_img, threshold, min_contour_area=100):
+        # Convert to grayscale
+        gray_img = cv2.cvtColor(uv_img, cv2.COLOR_BGR2GRAY)
+
+        # Apply GaussianBlur to reduce noise
+        blurred_img = cv2.GaussianBlur(gray_img, (5, 5), 0)
+
+        # Apply Canny edge detection
+        edges = cv2.Canny(blurred_img, threshold, 255)
+
+        # Find contours
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Create an empty image to draw filled contours
+        filled_contours_img = np.zeros_like(uv_img)
+
+        # Iterate through contours and filter by area
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > min_contour_area:
+                cv2.drawContours(filled_contours_img, [contour], -1, (0, 255, 0), thickness=cv2.FILLED)
+        return filled_contours_img
+
+    def detect_edges_rgb(self, uv_img: cv2.typing.MatLike):
+        uv_img = cv2.GaussianBlur(uv_img, (5, 5), 0)
+        # Split the image into its B, G, R channels
+        b_channel, g_channel, r_channel = cv2.split(uv_img)
+
+        # Apply Canny edge detection on each channel
+        edges_b = cv2.Canny(b_channel, 50, 150)
+        edges_g = cv2.Canny(g_channel, 50, 150)
+        edges_r = cv2.Canny(r_channel, 50, 150)
+
+        # Combine the edges from each channel
+        edges_combined = np.maximum(edges_b, np.maximum(edges_g, edges_r))
+
+        # Convert edges to a 3-channel image
+        edges_colored = cv2.cvtColor(edges_combined, cv2.COLOR_GRAY2BGR)
+
+        # Overlay edges on the original RGB image
+        overlay_img = cv2.addWeighted(uv_img, 0.8, edges_colored, 1.0, 0)
+
+        return overlay_img
+        
     def update_image(self, event=None):
         # Get the threshold value from the scale
         threshold = self.threshold_scale.get()
 
-        thresh_img = self.identify_islands(self.original_img, threshold)
+        # thresh_img = self.identify_islands(self.original_img, threshold)
+        thresh_img = self.detect_edges_rgb(self.original_img)
+        # thresh_img = self.fill_contours(self.original_img, threshold, 0)
 
         # Convert to PIL format for display
         thresh_pil = Image.fromarray(thresh_img)
