@@ -5,9 +5,10 @@ from sklearn.cluster import KMeans
 import tkinter as tk
 from tkinter import Canvas, Frame
 from PIL import Image, ImageTk, ImageFilter
-import cv2
-import numpy as np
 from sklearn.cluster import KMeans
+
+import matplotlib.pyplot as plt
+import math
 
 texture_map = r'./labeled_texture_map_1.png'
 labeled_texture_map = r'./labeled_texture_map_2.png'
@@ -150,6 +151,92 @@ class ClusteringImgColor:
 
         return clustered_rgb_image, clustered_bgr_image
 
+class GetMainColorMap:
+    # Load and preprocess the image
+    def load_image(self, image_path):
+        image = cv2.imread(image_path)
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        return image_rgb
+
+    def preprocess_image(self, image_rgb):
+        pixels = image_rgb.reshape(-1, 3)
+        return pixels
+
+    # Apply K-means clustering
+    def apply_kmeans(self, pixels, num_colors):
+        kmeans = KMeans(n_clusters=num_colors, random_state=0)
+        kmeans.fit(pixels)
+        clusters = kmeans.cluster_centers_
+        labels = kmeans.labels_
+        color_counts = dict(zip(*np.unique(labels, return_counts=True)))
+        return clusters, color_counts
+    
+    def find_first_index_less_than(self, relative_changes, threshold=0.1):
+        # Find the first index where the value is less than the threshold
+        for index, value in enumerate(relative_changes):
+            if value < threshold:
+                return index
+        return -1  # Return -1 if no value is less than the threshold
+    
+    # Plot the main colors
+    def plot_colors(self, colors, counts):
+        plt.figure(figsize=(8, 6))
+        plt.title(f"Main Colors")
+        plt.bar(range(len(colors)), counts, color=np.array(colors)/255)
+        plt.xlabel('Color')
+        plt.ylabel('Count')
+        plt.xticks(range(len(colors)), [f'Color {i+1}' for i in range(len(colors))], rotation=90)
+        plt.show()
+
+    # Find the optimal number of clusters using the Elbow Method
+    def find_optimal_k(self, pixels, max_k=10):
+        wcss = []
+        for k in range(1, max_k+1):
+            kmeans = KMeans(n_clusters=k, random_state=0).fit(pixels)
+            wcss.append(kmeans.inertia_)
+
+        print("Relative Changes (%):", self.calculate_relative_change(wcss))
+
+        plt.figure(figsize=(8, 6))
+        plt.plot(range(1, max_k+1), wcss, marker='o')
+        plt.title('Elbow Method for Optimal k')
+        plt.xlabel('Number of clusters')
+        plt.ylabel('WCSS')
+        plt.show()
+
+        return np.array(wcss), self.calculate_relative_change(wcss)
+    
+    def calculate_relative_change(self, array):
+        if len(array) < 2:
+            return np.array([])  # Not enough data to compute relative change
+        
+        array = np.array(array)
+        
+        # Handle zero values to avoid division by zero
+        with np.errstate(divide='ignore', invalid='ignore'):
+            relative_change = abs(array[1:] - array[:-1]) / array.max() * 100
+        
+        return relative_change
+
+    # Main function to execute the script
+    def detect(self, image_path, num_colors=5):
+        image_rgb = self.load_image(image_path)
+        pixels = self.preprocess_image(image_rgb)
+
+        # Find the optimal number of clusters (optional)
+        wcss, relative_chg = self.find_optimal_k(pixels, max_k=10)
+
+        if (self.find_first_index_less_than(relative_chg) != -1):
+            num_colors = self.find_first_index_less_than(relative_chg) + 1
+
+        # Apply K-means clustering with the chosen number of colors
+        clusters, color_counts = self.apply_kmeans(pixels, num_colors)
+        
+        # Prepare and plot the results
+        main_colors = np.round(clusters).astype(int)
+        color_counts_list = [color_counts.get(i, 0) for i in range(num_colors)]
+        self.plot_colors(main_colors, color_counts_list)
+
 class ImageAppUsingML:
     def __init__(self, root, original_img_path, n_cluster = 10):
         self.n_cluster = n_cluster
@@ -273,7 +360,12 @@ class ImageApp:
         self.thresh_tk = thresh_tk
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    # app = ImageApp(root, './labeled_texture_map_1.png')
-    app = ImageAppUsingML(root, texture_map, 7)
-    root.mainloop()
+    if (False):
+        # Call main function with the desired number of main colors
+        GetMainColorMap().detect('./texture_map.png', num_colors=5)
+
+    else:
+        root = tk.Tk()
+        # app = ImageApp(root, './labeled_texture_map_1.png')
+        app = ImageAppUsingML(root, texture_map, 7)
+        root.mainloop()
